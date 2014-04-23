@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta charset="utf-8">
+        <title>College Locator</title>
+        
+        <!--Create all CSS styles-->
+        <style>
+            html, body, #map_canvas {
+                height: 100%;
+                background-color: black;
+                overflow: hidden;
+            } 
+            
+            #header {
+                width: 100%;
+            }
+            
+            .table {
+                display:table;
+                width:100%;
+            }
+            .tr {
+                display:table-row;
+            }
+            .d1 {
+                display:table-cell;
+                width:30%;
+                color: white;
+                padding-left: 10px;
+            }
+            .d2 {
+                display:table-cell;
+                text-align:center;
+                width:15%;
+                font-size: 20pt;
+                color: white;
+            }
+            .d3 {
+                display:table-cell;
+                text-align:right;
+                width:55%;
+                color: white;
+                padding-right: 20px;
+            }
+            img
+            {
+                vertical-align:text-top;
+            }
+        </style>
+        
+        <script>
+            var markerclusterer = null;
+            var map = null;
+            var gmarkers = []; 
+            var currentMarkerTitle = null;
+            
+            //Grab data from fusion table
+            var queryUrlHead = 'https://www.googleapis.com/fusiontables/v1/query?sql=';
+            var queryUrlTail = '&key=AIzaSyANM-4ble2EgMEZtmYtHsRdcnac05BTPTQ';
+            Table = '1jPA_iaBh_FF3KWLQ6WVQZMvr3zjMIdNU3TYgDGLa';
+
+            // write your SQL as normal, then encode it
+            var query = "SELECT * FROM " + Table;
+            var queryurl = encodeURI(queryUrlHead + query + queryUrlTail);
+            var collegeInfo2 = null;
+            var intMatchesFound = null;
+            var matchesFound = [];
+            var currentMatch = null;
+            var rochester;
+            var center;
+        </script>
+
+        
+        <!--Load Google Maps API using my key-->
+        <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCczO2HCQ7lJxWrXPWIcpc8I95EiCH-Mxw&sensor=false"></script>
+        
+        <!--Load Marker Clusterer to search through markers-->
+        <script src="http://google-maps-utility-library-v3.googlecode.com/svn/trunk/markerclusterer/src/markerclusterer.js"></script>
+        
+        <!--Grab custom InfoBubble script from Google-->
+        <script src="http://google-maps-utility-library-v3.googlecode.com/svn/trunk/infobubble/src/infobubble-compiled.js"></script>
+        
+        <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+
+        <script>                        
+            function initialize(){  
+                document.getElementById('nextButton').style.visibility = 'hidden';
+                var jqxhr = $.get(queryurl, addMarkers, "jsonp");
+            }
+            
+            function resizeMap () {
+                $('#map_canvas').height($(window).height()-$('#header').height()-20);
+            }
+            
+            function calculateCenter() {
+                center = map.getCenter();
+            }
+            
+            $(window).resize(function() {
+                $('#map_canvas').height($(window).height()-$('#header').height()-20);
+            });
+
+            function addMarkers(collegeInfo) {
+                //Initialize Map
+                collegeInfo2 = collegeInfo;
+                rochester = new google.maps.LatLng(43.1656,-77.6114); //Set map center to Rochester by default
+                var mapOptions = {
+                    zoom: 8,
+                    center: rochester,
+                    mapTypeId: google.maps.MapTypeId.ROADMAP
+                };
+                map = new google.maps.Map(document.getElementById('map_canvas'), mapOptions); 
+                
+                resizeMap();
+                map.setCenter(rochester);
+                               
+                //Create infobubble that will contain information for markers on map
+                var infoBubble = new InfoBubble( {
+                  maxWidth: 200,
+                  maxHeight: 300
+                });
+                //Define InfoBubble content holder
+                var firstTab = document.createElement('DIV');
+                var secondTab = document.createElement('DIV');
+                var thirdTab = document.createElement('DIV');
+                var fourthTab = document.createElement('DIV');
+                
+                //Add Markers to map
+                var latlng;
+                var boolHasScholarship = new Boolean();
+                var marker;
+                
+                for (i=1; i<collegeInfo.rows.length; i++) {
+                    latlng = new google.maps.LatLng(collegeInfo.rows[i][4],collegeInfo.rows[i][3]);
+                    if (collegeInfo.rows[i][68] > 0 && collegeInfo.rows[i][68] != 'NaN') {
+                        marker = new google.maps.Marker( {
+                            position: latlng,
+                            map: map,
+                            title: collegeInfo.rows[i][1],
+                            icon: 'http://maps.google.com/mapfiles/ms/icons/green-dot.png'
+                        });
+                    }
+                    else {
+                        marker = new google.maps.Marker( {
+                            position: latlng,
+                            map: map,
+                            title: collegeInfo.rows[i][1],
+                            icon: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                        });
+                    }
+                    
+                    
+                    gmarkers.push(marker);
+
+                    //Add listener for marker clicks
+                    google.maps.event.addListener(marker, 'click', function() {
+                        for (i=1; i<collegeInfo.rows.length; i++) {
+                            if (collegeInfo.rows[i][1] == this.title)
+                            {
+                                if (infoBubble.isOpen()) {
+                                    infoBubble.close();
+                                    delete infoBubble;
+                                    infoBubble = new InfoBubble({
+                                        maxWidth: 300,
+                                        maxHeight: 300
+                                    });
+                                }
+                                if (!infoBubble.isOpen()) {
+                                    if (collegeInfo.rows[i][68] > 0 && collegeInfo.rows[i][68] != 'NaN') {
+                                        firstTab.innerHTML = '<font size=4><b>'+collegeInfo.rows[i][1]+'</b></font><br><br>'+
+                                        '<font size=3><b>'+collegeInfo.rows[i][5]+', '+collegeInfo.rows[i][6]+'</b><br>'+
+                                        '<b><a href="http://'+collegeInfo.rows[i][7]+'" target="_blank">'+collegeInfo.rows[i][7]+'</a></b><br>'+
+                                        '<b>Institution Type:</b> '+collegeInfo.rows[i][8]+'<br>'+
+                                        '<b>Category:</b> '+collegeInfo.rows[i][10]+'<br>'+
+                                        '<b>Enrollment:</b> '+collegeInfo.rows[i][31]+'<br>'+
+                                        '<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Undergraduate:</b> '+collegeInfo.rows[i][32]+'<br>'+
+                                        '<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Graduate:</b> '+collegeInfo.rows[i][33]+'<br>'+
+                                        '<b>Rochester City School District Scholarships:</b>'+collegeInfo.rows[i][68]+'<br>'+
+                                        '<b><a href="http://www.rcsdk12.org/site/default.aspx?PageType=12&DomainId=128&ModuleInstanceId=172&DisplayType=L" target="_blank">Scholarship Info</a></b></font>';
+                                    }
+                                    else {
+                                        firstTab.innerHTML = '<font size=4><b>'+collegeInfo.rows[i][1]+'</b></font><br><br>'+
+                                        '<font size=3><b>'+collegeInfo.rows[i][5]+', '+collegeInfo.rows[i][6]+'</b><br>'+
+                                        '<b><a href="http://'+collegeInfo.rows[i][7]+'" target="_blank">'+collegeInfo.rows[i][7]+'</a></b><br>'+
+                                        '<b>Institution Type:</b> '+collegeInfo.rows[i][8]+'<br>'+
+                                        '<b>Category:</b> '+collegeInfo.rows[i][10]+'<br>'+
+                                        '<b>Enrollment:</b> '+collegeInfo.rows[i][31]+'<br>'+
+                                        '<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Undergraduate:</b> '+collegeInfo.rows[i][32]+'<br>'+
+                                        '<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Graduate:</b> '+collegeInfo.rows[i][33]+'<br>'+'</font>';
+                                        
+                                    }
+                                    secondTab.innerHTML = 
+                                    '<font size=3><b>Asian:</b> '+collegeInfo.rows[i][35]+'%<br>'+
+                                    '<b>African American:</b> '+collegeInfo.rows[i][36]+'%<br>'+
+                                    '<b>Hispanic:</b> '+collegeInfo.rows[i][37]+'%<br>'+
+                                    '<b>White:</b> '+collegeInfo.rows[i][39]+'%<br>'+
+                                    '<b>Undergrads Under 18:</b> '+collegeInfo.rows[i][47]+'%<br>'+
+                                    '<b>Undergrads 18 to 24:</b> '+collegeInfo.rows[i][48]+'%<br>'+
+                                    '<b>Undergrads 25 to 64:</b> '+collegeInfo.rows[i][49]+'%<br>'+
+                                    '<b>Retention Rate:</b> '+collegeInfo.rows[i][45]+'%<br>'+
+                                    '<b>Graduation Rate:</b> '+collegeInfo.rows[i][51]+'%</font>';
+
+                                    thirdTab.innerHTML = '<font size=3><b>Students Receiving Pell Grants:</b> '+collegeInfo.rows[i][55]+'%<br>'+
+                                    '<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Average Pell Grant:</b> $'+collegeInfo.rows[i][56]+'<br>'+
+                                    '<b>Students Receiving State/Local Grants:</b> '+collegeInfo.rows[i][57]+'%<br>'+
+                                    '<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Average State/Local Grant:</b> $'+collegeInfo.rows[i][58]+'<br>'+
+                                    '<b>Students Receiving Institutional Grants:</b> '+collegeInfo.rows[i][59]+'%<br>'+
+                                    '<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Average Institutional Grant:</b> $'+collegeInfo.rows[i][60]+'<br>'+
+                                    '<b>Students Receiving Student Loan Aid:</b> '+collegeInfo.rows[i][61]+'%<br>'+
+                                    '<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Average Student Loan Aid:</b> $'+collegeInfo.rows[i][62]+'</font>';
+
+                                    fourthTab.innerHTML = '<font size=3><b>In State Students Living On Campus:</b> $'+collegeInfo.rows[i][26]+'<br>'+
+                                    '<b>In State Students Living Off Campus w/o Family:</b> $'+collegeInfo.rows[i][27]+'<br>'+
+                                    '<b>In State Students Living Off Campus with Family:</b> $'+collegeInfo.rows[i][28]+'<br>'+
+                                    '<b>Tuition and Fees:</b> $'+collegeInfo.rows[i][29]+'</font>';
+                                    delete infoBubble;
+                                    infoBubble = new InfoBubble({
+                                        maxWidth: 300,
+                                        maxHeight: 300
+                                    });
+                                    infoBubble.addTab(collegeInfo.rows[i][1], firstTab);
+                                    infoBubble.addTab('Institutional Profile', secondTab);
+                                    infoBubble.addTab('Financial Aid', thirdTab);
+                                    infoBubble.addTab('Cost of Attendance', fourthTab);
+                                    infoBubble.open(map, this);
+                                }   
+                            }    
+                        }
+                    });
+
+                    //Add listeners for map clicks
+                    google.maps.event.addListener(map, 'click', function() {
+                        if (infoBubble.isOpen()) {
+                            infoBubble.close();
+                            delete infoBubble;
+                            infoBubble = new InfoBubble({
+                                maxWidth: 300,
+                                maxHeight: 300
+                            });
+                        }
+                    });
+                    
+                    google.maps.event.addDomListener(map, 'idle', function() {
+                        calculateCenter();
+                    });
+                    google.maps.event.addDomListener(window, 'resize', function() {
+                        map.setCenter(center);
+                    });
+                }
+            }
+            
+            google.maps.event.addDomListener(window, 'load', initialize);
+        </script>
+    </head>
+    <body>
+        <script>
+            function SearchMapMarkers() //
+            {
+                var searchFor = document.getElementById('SearchTerm');
+                var boolFoundMatch = new Boolean();
+                boolFoundMatch = 0;
+                matchesFound = [];
+                
+                //var map = new google.maps.Map(document.getElementById('map_canvas'));
+                markerCluster = new MarkerClusterer(map, gmarkers);
+                
+                markerCluster.setMaxZoom(1);
+                markerCluster.setGridSize(1);
+                markerCluster.redraw();
+
+                var x;
+                for (x=markerCluster.markers_.length - 1; x>0; x--) {
+                    currentMarkerTitle = markerCluster.markers_[x].title;
+                    currentMarkerTitle = currentMarkerTitle.toUpperCase();
+                    var n = currentMarkerTitle.search(searchFor.value.toUpperCase());
+                    if (n > -1) {
+                        boolFoundMatch = 1;
+                        matchesFound.push(x);
+                    }
+                }  
+                
+                if (boolFoundMatch == 1) {
+                    //display match number and allow cycling through
+                    currentMatch = 0;
+                    google.maps.event.trigger(gmarkers[matchesFound[currentMatch]], "click");
+                    if (matchesFound.length > 0)
+                    {
+                        document.getElementById('nextButton').style.visibility = 'visible';
+                    }
+                    document.getElementById('numberOfResults').innerHTML = matchesFound.length+" found";
+                    document.getElementById("numberofResults").focus();
+                }
+                else {
+                    matchesFound = [];
+                    errorText = document.getElementById("searchResults");
+                    errorText = "No colleges matched search criteria";
+                    document.getElementById('nextButton').style.visibility = 'hidden';
+                    google.maps.event.trigger(map, "click");
+                    document.getElementById('numberOfResults').innerHTML = "0 found";
+                    document.getElementById("numberofResults").focus();
+                }
+            }
+            function DisplayNext()
+            {
+                if (matchesFound.length > 0)
+                {
+                    currentMatch++;
+                    if (currentMatch == matchesFound.length)
+                    {
+                        currentMatch = 0;
+                    }
+                    google.maps.event.trigger(gmarkers[matchesFound[currentMatch]], "click");
+                }
+            }
+            
+    </script>
+        <div id="header">      
+            <div class="table">
+                <div class="tr"> 
+                    <div class="d1">Search college name: <input type="text" id="SearchTerm" onkeydown="if (event.keyCode == 13) SearchMapMarkers()">
+                        <button type="button" id="searchButton" onclick="SearchMapMarkers()">Find</button>
+                        <button type="button" id="nextButton" onclick="DisplayNext()">Next</button>
+                        <span id="numberOfResults"></span></div>
+                    <div class="d2">College Locator</div>
+                    <div class="d3">Click icons to view college information&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                        <img src="http://maps.google.com/mapfiles/ms/icons/green-dot.png" height="25" width="25" alt="green markers">= RCSD Scholarship Available&nbsp;&nbsp;
+                        <img src="http://maps.google.com/mapfiles/ms/icons/red-dot.png" height="25" width="25" alt="red markers">= No RCSD Scholarships
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="map_canvas"></div>
+    </body>
+</html>
